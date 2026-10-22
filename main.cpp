@@ -3,6 +3,7 @@
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
+#include <complex>
 
 template<typename T>
 class Image {
@@ -12,6 +13,7 @@ private:
     T* data_;
 
 public:
+    static constexpr double epsilon = 1e-6;
     Image(int width, int height, bool randomize);
     Image(const Image& other);
     Image& operator=(const Image& other);
@@ -23,7 +25,12 @@ public:
     int width() const;
     int height() const;
     int size() const;
+
+
+    bool operator==(const Image& other) const;
+    bool operator!=(const Image& other) const;
 };
+
 
 // --- Реализация ---
 
@@ -118,6 +125,57 @@ int Image<T>::height() const { return height_; }
 template<typename T>
 int Image<T>::size() const { return width_ * height_; }
 
+
+
+
+
+template<typename T>
+bool Image<T>::operator==(const Image& other) const {
+    if (width_ != other.width_ || height_ != other.height_) {
+        return false;
+    }
+    for (int i = 0; i < size(); ++i) {
+        if constexpr (std::is_same_v<T, std::complex<float>>
+            || std::is_same_v<T, std::complex<double>>) {
+            if (std::abs(data_[i].real() - other.data_[i].real()) > epsilon) {
+                return false;
+            }
+            if (std::abs(data_[i].imag() - other.data_[i].imag()) > epsilon) {
+                return false;
+            }
+        }
+        else if constexpr (std::is_floating_point_v<T>) {
+            if (std::abs(data_[i] - other.data_[i]) > epsilon) {
+                return false;
+            }
+        }
+        else {
+            if (data_[i] != other.data_[i]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+template<typename T>
+bool Image<T>::operator!=(const Image& other) const {
+    return !(*this == other);
+}
+
+
+
 int main() {
+    Image<float> a(3, 3, true);
+    Image<float> b = a;
+    std::cout << "a == b: " << (a == b) << "\n";
+    std::cout << "a != b: " << (a != b) << "\n";
+
+    b(0, 0) = b(0, 0) + 1.0f;
+    std::cout << "after change, a == b: " << (a == b) << "\n";
+
+
+
+
     return 0;
 }
