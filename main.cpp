@@ -29,7 +29,26 @@ public:
 
     bool operator==(const Image& other) const;
     bool operator!=(const Image& other) const;
+
+
+
+    Image operator+(const Image& other) const;
+    Image operator*(const Image& other) const;
+    Image operator*(T scalar) const;
+    Image operator+(T scalar) const;
+    Image operator!() const;
+
+    template<typename U>
+    friend std::ostream& operator<<(std::ostream& os, const Image<U>& img);
+
+
+
+
 };
+
+
+
+
 
 
 // --- Реализация ---
@@ -163,19 +182,168 @@ bool Image<T>::operator!=(const Image& other) const {
     return !(*this == other);
 }
 
+template<typename T>
+std::ostream& operator<<(std::ostream& os, const Image<T>& img) {
+    for (int row = 0; row < img.height(); ++row) {
+        for (int col = 0; col < img.width(); ++col) {
+            os << img(row, col) << ' ';
+        }
+        os << '\n';
+    }
+    return os;
+}
+
+template<typename T>
+Image<T> Image<T>::operator+(const Image& other) const {
+    if (width_ != other.width_ || height_ != other.height_) {
+        throw std::invalid_argument("Image sizes must match for addition");
+    }
+    Image<T> result(width_, height_, false);
+    for (int i = 0; i < size(); ++i) {
+        if constexpr (std::is_same_v<T, bool>) {
+            result.data_[i] = data_[i] || other.data_[i];
+        }
+        else {
+            result.data_[i] = static_cast<T>(data_[i] + other.data_[i]);
+        }
+    }
+    return result;
+}
+
+template<typename T>
+Image<T> Image<T>::operator*(const Image& other) const {
+    if (width_ != other.width_ || height_ != other.height_) {
+        throw std::invalid_argument("Image sizes must match for multiplication");
+    }
+    Image<T> result(width_, height_, false);
+    for (int i = 0; i < size(); ++i) {
+        if constexpr (std::is_same_v<T, bool>) {
+            result.data_[i] = data_[i] && other.data_[i];
+        }
+        else {
+            result.data_[i] = static_cast<T>(data_[i] * other.data_[i]);
+        }
+    }
+    return result;
+}
+
+template<typename T>
+Image<T> Image<T>::operator*(T scalar) const {
+    Image<T> result(width_, height_, false);
+    for (int i = 0; i < size(); ++i) {
+        if constexpr (std::is_same_v<T, bool>) {
+            result.data_[i] = data_[i] && scalar;
+        }
+        else {
+            result.data_[i] = static_cast<T>(data_[i] * scalar);
+        }
+    }
+    return result;
+}
+
+template<typename T>
+Image<T> Image<T>::operator+(T scalar) const {
+    Image<T> result(width_, height_, false);
+    for (int i = 0; i < size(); ++i) {
+        if constexpr (std::is_same_v<T, bool>) {
+            result.data_[i] = data_[i] || scalar;
+        }
+        else {
+            result.data_[i] = static_cast<T>(data_[i] + scalar);
+        }
+    }
+    return result;
+}
+
+template<typename T>
+Image<T> operator*(T scalar, const Image<T>& img) {
+    return img * scalar;
+}
+
+template<typename T>
+Image<T> operator+(T scalar, const Image<T>& img) {
+    return img + scalar;
+}
+
+template<typename T>
+Image<T> Image<T>::operator!() const {
+    Image<T> result(width_, height_, false);
+    for (int i = 0; i < size(); ++i) {
+        if constexpr (std::is_same_v<T, bool>) {
+            result.data_[i] = !data_[i];
+        }
+        else if constexpr (std::is_signed_v<T>) {
+            if (data_[i] == std::numeric_limits<T>::min()) {
+                result.data_[i] = std::numeric_limits<T>::max();
+            }
+            else {
+                result.data_[i] = static_cast<T>(-data_[i]);
+            }
+        }
+        else if constexpr (std::is_integral_v<T>) {
+            result.data_[i] = static_cast<T>(std::numeric_limits<T>::max() - data_[i]);
+        }
+        else {
+            result.data_[i] = -data_[i];
+        }
+    }
+    return result;
+}
 
 
-int main() {
-    Image<float> a(3, 3, true);
-    Image<float> b = a;
+template<typename T>
+void demo(const char* type_name) {
+    std::cout << "=== Demo for type: " << type_name << " ===\n";
+
+    Image<T> a(3, 3, true);
+    Image<T> b(3, 3, true);
+
+    std::cout << "a:\n" << a;
+    std::cout << "b:\n" << b;
+
     std::cout << "a == b: " << (a == b) << "\n";
     std::cout << "a != b: " << (a != b) << "\n";
 
-    b(0, 0) = b(0, 0) + 1.0f;
-    std::cout << "after change, a == b: " << (a == b) << "\n";
+    std::cout << "a + b:\n" << (a + b);
+    std::cout << "a * b:\n" << (a * b);
+
+    std::cout << "a * scalar(2):\n" << (a * static_cast<T>(2));
+    std::cout << "scalar(2) * a:\n" << (static_cast<T>(2) * a);
+    std::cout << "a + scalar(1):\n" << (a + static_cast<T>(1));
+    std::cout << "scalar(1) + a:\n" << (static_cast<T>(1) + a);
+
+    std::cout << "!a:\n" << (!a);
+
+    std::cout << "\n";
+}
 
 
 
+int main() {
+  
+    try {
+        demo<bool>("bool");
+        demo<char>("char");
+        demo<float>("float");
+        demo<short>("short");
 
+        std::cout << "=== Exception checks ===\n";
+        Image<int> img(2, 2, false);
+        try {
+            img(5, 5);
+        }
+        catch (const std::out_of_range& e) {
+            std::cout << "Caught out_of_range: " << e.what() << "\n";
+        }
+        try {
+            Image<int> bad(0, 0, false);
+        }
+        catch (const std::invalid_argument& e) {
+            std::cout << "Caught invalid_argument: " << e.what() << "\n";
+        }
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Unhandled error: " << e.what() << "\n";
+    }
     return 0;
 }
