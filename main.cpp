@@ -51,7 +51,7 @@ public:
 
 
 
-// --- Реализация ---
+
 
 template<typename T>
 Image<T>::Image(int width, int height, bool randomize)
@@ -291,6 +291,35 @@ Image<T> Image<T>::operator!() const {
 }
 
 
+
+
+
+
+//--------------------------------------------------------------------------------------------------------------------
+template<typename T>
+Image<T> draw_filled_circle(int width, int height, double cx, double cy, double r, T fill_value) {
+    if (width <= 0 || height <= 0) {
+        throw std::invalid_argument("Dimensions must be positive");
+    }
+    if (r < 0) {
+        throw std::invalid_argument("Radius must be non-negative");
+    }
+    Image<T> img(width, height, false);
+    for (int row = 0; row < height; ++row) {
+        for (int col = 0; col < width; ++col) {
+            double dx = col - cx;
+            double dy = row - cy;
+            if (dx * dx + dy * dy <= r * r) {
+                img(row, col) = fill_value;
+            }
+        }
+    }
+    return img;
+}
+
+
+
+
 template<typename T>
 void demo(const char* type_name) {
     std::cout << "=== Demo for type: " << type_name << " ===\n";
@@ -314,13 +343,16 @@ void demo(const char* type_name) {
 
     std::cout << "!a:\n" << (!a);
 
+
+    std::cout << "circle r=2 (fill=1):\n"
+        << draw_filled_circle<T>(5, 5, 2.0, 2.0, 2.0, static_cast<T>(1));
+
     std::cout << "\n";
 }
 
 
 
 int main() {
-  
     try {
         demo<bool>("bool");
         demo<char>("char");
@@ -341,6 +373,17 @@ int main() {
         catch (const std::invalid_argument& e) {
             std::cout << "Caught invalid_argument: " << e.what() << "\n";
         }
+
+        std::cout << "=== Interactive circle ===\n";
+        int w, h;
+        double cx, cy, r;
+        std::cout << "Enter width height: ";
+        std::cin >> w >> h;
+        std::cout << "Enter cx cy r: ";
+        std::cin >> cx >> cy >> r;
+        std::cout << "Circle (int, fill=1):\n"
+            << draw_filled_circle<int>(w, h, cx, cy, r, 1);
+
     }
     catch (const std::exception& e) {
         std::cerr << "Unhandled error: " << e.what() << "\n";
