@@ -38,6 +38,8 @@ public:
     Image operator+(T scalar) const;
     Image operator!() const;
 
+    double fill_ratio() const;
+
     template<typename U>
     friend std::ostream& operator<<(std::ostream& os, const Image<U>& img);
 
@@ -291,7 +293,28 @@ Image<T> Image<T>::operator!() const {
 }
 
 
+template<typename T>
+double Image<T>::fill_ratio() const {
+    double sum = 0.0;
+    for (int i = 0; i < size(); ++i) {
+        if constexpr (std::is_same_v<T, bool>) {
+            sum += data_[i] ? 1.0 : 0.0;
+        }
+        else {
+            sum += static_cast<double>(data_[i]);
+        }
+    }
 
+    double max_value = 0.0;
+    if constexpr (std::is_same_v<T, bool>) {
+        max_value = 1.0;
+    }
+    else {
+        max_value = static_cast<double>(std::numeric_limits<T>::max());
+    }
+
+    return sum / (static_cast<double>(size()) * max_value);
+}
 
 
 
@@ -342,6 +365,8 @@ void demo(const char* type_name) {
     std::cout << "scalar(1) + a:\n" << (static_cast<T>(1) + a);
 
     std::cout << "!a:\n" << (!a);
+
+    std::cout << "fill_ratio: " << a.fill_ratio() << "\n";
 
 
     std::cout << "circle r=2 (fill=1):\n"
