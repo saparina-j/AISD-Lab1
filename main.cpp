@@ -2,70 +2,94 @@
 #include <random>
 #include <limits>
 #include <stdexcept>
-#include <type_traits>
 #include <complex>
 #include <algorithm>
 
-#define NOMINMAX 
-#include <windows.h> 
+#define NOMINMAX
+#include <windows.h>
 
-
-template <typename T>
-struct is_complex : std::false_type {};
-
-template <typename U>
-struct is_complex<std::complex<U>> : std::true_type {};
-
-
-template<typename T>
-T saturate(long long value) {
-    if (value > static_cast<long long>(std::numeric_limits<T>::max()))
-        return std::numeric_limits<T>::max();
-    if (value < static_cast<long long>(std::numeric_limits<T>::min()))
-        return std::numeric_limits<T>::min();
-    return static_cast<T>(value);
+// --- Защита от переполнения ---
+short saturate_short(long long v) {
+    if (v > static_cast<long long>(std::numeric_limits<short>::max())) return std::numeric_limits<short>::max();
+    if (v < static_cast<long long>(std::numeric_limits<short>::min())) return std::numeric_limits<short>::min();
+    return static_cast<short>(v);
 }
 
-template<typename T>
-T saturate(double value) {
-    if (value > static_cast<double>(std::numeric_limits<T>::max()))
-        return std::numeric_limits<T>::max();
-    if (value < static_cast<double>(std::numeric_limits<T>::lowest()))
-        return std::numeric_limits<T>::lowest();
-    return static_cast<T>(value);
+char saturate_char(long long v) {
+    if (v > static_cast<long long>(std::numeric_limits<char>::max())) return std::numeric_limits<char>::max();
+    if (v < static_cast<long long>(std::numeric_limits<char>::min())) return std::numeric_limits<char>::min();
+    return static_cast<char>(v);
 }
 
+float saturate_float(double v) {
+    if (v > static_cast<double>(std::numeric_limits<float>::max())) return std::numeric_limits<float>::max();
+    if (v < static_cast<double>(std::numeric_limits<float>::lowest())) return std::numeric_limits<float>::lowest();
+    return static_cast<float>(v);
+}
 
+std::complex<float> saturate_complex(std::complex<double> v) {
+    return std::complex<float>(saturate_float(v.real()), saturate_float(v.imag()));
+}
+
+// --- Перегрузки операций ---
+bool op_add(bool a, bool b) { return a || b; }
+char op_add(char a, char b) { return saturate_char(static_cast<long long>(a) + static_cast<long long>(b)); }
+short op_add(short a, short b) { return saturate_short(static_cast<long long>(a) + static_cast<long long>(b)); }
+float op_add(float a, float b) { return saturate_float(static_cast<double>(a) + static_cast<double>(b)); }
+std::complex<float> op_add(std::complex<float> a, std::complex<float> b) { return a + b; }
+
+bool op_sub(bool a, bool b) { return a && !b; }
+char op_sub(char a, char b) { return saturate_char(static_cast<long long>(a) - static_cast<long long>(b)); }
+short op_sub(short a, short b) { return saturate_short(static_cast<long long>(a) - static_cast<long long>(b)); }
+float op_sub(float a, float b) { return saturate_float(static_cast<double>(a) - static_cast<double>(b)); }
+std::complex<float> op_sub(std::complex<float> a, std::complex<float> b) { return a - b; }
+
+bool op_mul(bool a, bool b) { return a && b; }
+char op_mul(char a, char b) { return saturate_char(static_cast<long long>(a) * static_cast<long long>(b)); }
+short op_mul(short a, short b) { return saturate_short(static_cast<long long>(a) * static_cast<long long>(b)); }
+float op_mul(float a, float b) { return saturate_float(static_cast<double>(a) * static_cast<double>(b)); }
+std::complex<float> op_mul(std::complex<float> a, std::complex<float> b) { return a * b; }
+
+bool op_invert(bool a) { return !a; }
+char op_invert(char a) { return (a == std::numeric_limits<char>::min()) ? std::numeric_limits<char>::max() : static_cast<char>(-a); }
+short op_invert(short a) { return (a == std::numeric_limits<short>::min()) ? std::numeric_limits<short>::max() : static_cast<short>(-a); }
+float op_invert(float a) { return -a; }
+std::complex<float> op_invert(std::complex<float> a) { return -a; }
+
+// --- random_value: перегрузки по типу ---
+bool random_value(bool, std::mt19937& engine) {
+    std::bernoulli_distribution dist(0.5);
+    return dist(engine);
+}
+char random_value(char, std::mt19937& engine) {
+    std::uniform_int_distribution<int> dist(
+        static_cast<int>(std::numeric_limits<char>::min()),
+        static_cast<int>(std::numeric_limits<char>::max()));
+    return static_cast<char>(dist(engine));
+}
+short random_value(short, std::mt19937& engine) {
+    std::uniform_int_distribution<int> dist(
+        static_cast<int>(std::numeric_limits<short>::min()),
+        static_cast<int>(std::numeric_limits<short>::max()));
+    return static_cast<short>(dist(engine));
+}
+float random_value(float, std::mt19937& engine) {
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    return static_cast<float>(dist(engine));
+}
+std::complex<float> random_value(std::complex<float>, std::mt19937& engine) {
+    std::uniform_real_distribution<float> real_dist(0.0f, 1.0f);
+    std::uniform_real_distribution<float> imag_dist(0.0f, 1.0f);
+    return std::complex<float>(real_dist(engine), imag_dist(engine));
+}
+
+// --- Класс ---
 template<typename T>
 class Image {
 private:
     int width_;
     int height_;
     T* data_;
-
-    template<typename E>
-    T random_value(E& engine) {
-        if constexpr (is_complex<T>::value) {
-            using R = typename T::value_type;
-            std::uniform_real_distribution<R> real_dist(R(0), R(1));
-            std::uniform_real_distribution<R> imag_dist(R(0), R(1));
-            return T(real_dist(engine), imag_dist(engine));
-        }
-        else if constexpr (std::is_same_v<T, bool>) {
-            std::bernoulli_distribution dist(0.5);
-            return dist(engine);
-        }
-        else if constexpr (std::is_integral_v<T>) {
-            std::uniform_int_distribution<int> dist(
-                static_cast<int>(std::numeric_limits<T>::min()),
-                static_cast<int>(std::numeric_limits<T>::max()));
-            return static_cast<T>(dist(engine));
-        }
-        else {
-            std::uniform_real_distribution<double> dist(0.0, 1.0);
-            return static_cast<T>(dist(engine));
-        }
-    }
 
 public:
     static const double epsilon;
@@ -79,7 +103,7 @@ public:
             std::random_device rd;
             std::mt19937 engine(rd());
             for (int i = 0; i < size(); ++i)
-                data_[i] = random_value(engine);
+                data_[i] = random_value(T{}, engine);
         }
         else {
             for (int i = 0; i < size(); ++i) data_[i] = T{};
@@ -128,12 +152,7 @@ public:
             for (int c = 0; c < w; ++c) {
                 T a = (r < height_ && c < width_) ? data_[r * width_ + c] : T{};
                 T b = (r < other.height_ && c < other.width_) ? other.data_[r * other.width_ + c] : T{};
-                if constexpr (std::is_same_v<T, bool>)
-                    result.data_[r * w + c] = a || b;
-                else if constexpr (std::is_integral_v<T>)
-                    result.data_[r * w + c] = saturate<T>(static_cast<long long>(a) + static_cast<long long>(b));
-                else
-                    result.data_[r * w + c] = saturate<T>(static_cast<double>(a) + static_cast<double>(b));
+                result.data_[r * w + c] = op_add(a, b);
             }
         return result;
     }
@@ -146,12 +165,7 @@ public:
             for (int c = 0; c < w; ++c) {
                 T a = (r < height_ && c < width_) ? data_[r * width_ + c] : T{};
                 T b = (r < other.height_ && c < other.width_) ? other.data_[r * other.width_ + c] : T{};
-                if constexpr (std::is_same_v<T, bool>)
-                    result.data_[r * w + c] = a && !b;
-                else if constexpr (std::is_integral_v<T>)
-                    result.data_[r * w + c] = saturate<T>(static_cast<long long>(a) - static_cast<long long>(b));
-                else
-                    result.data_[r * w + c] = saturate<T>(static_cast<double>(a) - static_cast<double>(b));
+                result.data_[r * w + c] = op_sub(a, b);
             }
         return result;
     }
@@ -164,70 +178,36 @@ public:
             for (int c = 0; c < w; ++c) {
                 T a = (r < height_ && c < width_) ? data_[r * width_ + c] : T{};
                 T b = (r < other.height_ && c < other.width_) ? other.data_[r * other.width_ + c] : T{};
-                if constexpr (std::is_same_v<T, bool>)
-                    result.data_[r * w + c] = a && b;
-                else if constexpr (std::is_integral_v<T>)
-                    result.data_[r * w + c] = saturate<T>(static_cast<long long>(a) * static_cast<long long>(b));
-                else
-                    result.data_[r * w + c] = saturate<T>(static_cast<double>(a) * static_cast<double>(b));
+                result.data_[r * w + c] = op_mul(a, b);
             }
         return result;
     }
 
     Image operator*(const T& scalar) const {
         Image result(width_, height_, false);
-        for (int i = 0; i < size(); ++i) {
-            if constexpr (std::is_same_v<T, bool>)
-                result.data_[i] = data_[i] && scalar;
-            else if constexpr (std::is_integral_v<T>)
-                result.data_[i] = saturate<T>(static_cast<long long>(data_[i]) * static_cast<long long>(scalar));
-            else
-                result.data_[i] = saturate<T>(static_cast<double>(data_[i]) * static_cast<double>(scalar));
-        }
+        for (int i = 0; i < size(); ++i)
+            result.data_[i] = op_mul(data_[i], scalar);
         return result;
     }
 
     Image operator+(const T& scalar) const {
         Image result(width_, height_, false);
-        for (int i = 0; i < size(); ++i) {
-            if constexpr (std::is_same_v<T, bool>)
-                result.data_[i] = data_[i] || scalar;
-            else if constexpr (std::is_integral_v<T>)
-                result.data_[i] = saturate<T>(static_cast<long long>(data_[i]) + static_cast<long long>(scalar));
-            else
-                result.data_[i] = saturate<T>(static_cast<double>(data_[i]) + static_cast<double>(scalar));
-        }
+        for (int i = 0; i < size(); ++i)
+            result.data_[i] = op_add(data_[i], scalar);
         return result;
     }
 
     Image operator!() const {
         Image result(width_, height_, false);
-        for (int i = 0; i < size(); ++i) {
-            if constexpr (std::is_same_v<T, bool>)
-                result.data_[i] = !data_[i];
-            else if constexpr (std::is_signed_v<T>)
-                result.data_[i] = (data_[i] == std::numeric_limits<T>::min()) ? std::numeric_limits<T>::max() : static_cast<T>(-data_[i]);
-            else if constexpr (std::is_integral_v<T>)
-                result.data_[i] = static_cast<T>(std::numeric_limits<T>::max() - data_[i]);
-            else
-                result.data_[i] = -data_[i];
-        }
+        for (int i = 0; i < size(); ++i)
+            result.data_[i] = op_invert(data_[i]);
         return result;
     }
 
     bool operator==(const Image& other) const {
         if (width_ != other.width_ || height_ != other.height_) return false;
         for (int i = 0; i < size(); ++i) {
-            if constexpr (is_complex<T>::value) {
-                if (std::abs(data_[i].real() - other.data_[i].real()) > epsilon) return false;
-                if (std::abs(data_[i].imag() - other.data_[i].imag()) > epsilon) return false;
-            }
-            else if constexpr (std::is_floating_point_v<T>) {
-                if (std::abs(data_[i] - other.data_[i]) > epsilon) return false;
-            }
-            else {
-                if (data_[i] != other.data_[i]) return false;
-            }
+            if (std::abs(data_[i] - other.data_[i]) > epsilon) return false;
         }
         return true;
     }
@@ -236,13 +216,10 @@ public:
 
     double fill_ratio() const {
         double sum = 0.0;
-        for (int i = 0; i < size(); ++i) {
-            if constexpr (is_complex<T>::value)
-                sum += std::abs(data_[i]);
-            else
-                sum += static_cast<double>(data_[i]);
-        }
-        double max_val = is_complex<T>::value ? 1.0 : static_cast<double>(std::numeric_limits<T>::max());
+        for (int i = 0; i < size(); ++i)
+            sum += static_cast<double>(std::abs(data_[i]));
+        double max_val = static_cast<double>(std::numeric_limits<T>::max());
+        if (max_val == 0.0) max_val = 1.0;
         return sum / (static_cast<double>(size()) * max_val);
     }
 
@@ -263,14 +240,13 @@ std::ostream& operator<<(std::ostream& os, const Image<T>& img) {
     return os;
 }
 
-
 template<typename T>
 Image<T> operator*(const T& scalar, const Image<T>& img) { return img * scalar; }
 
 template<typename T>
 Image<T> operator+(const T& scalar, const Image<T>& img) { return img + scalar; }
 
-// --- Задача 3: закрашенный круг 
+// --- Задача 3 ---
 template<typename T>
 Image<T> draw_filled_circle(int width, int height, double cx, double cy, double r, const T& fill_value) {
     if (width <= 0 || height <= 0) throw std::invalid_argument("Размеры должны быть положительными");
@@ -285,7 +261,7 @@ Image<T> draw_filled_circle(int width, int height, double cx, double cy, double 
     return img;
 }
 
-
+// --- Меню ---
 void print_menu() {
     std::cout << "\n[1] Создать изображение (размеры и значение заполнения)\n";
     std::cout << "[2] Создать изображение (размеры, случайные значения)\n";
@@ -427,7 +403,7 @@ void run_menu() {
 }
 
 int main() {
-    SetConsoleOutputCP(CP_UTF8);  
+    SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
     std::cout << "Выберите тип элемента изображения:\n";
     std::cout << "  [1] bool\n  [2] char\n  [3] float\n  [4] short\n";
